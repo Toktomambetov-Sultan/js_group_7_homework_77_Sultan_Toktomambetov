@@ -1,10 +1,24 @@
 const express = require("express");
-const { nanoid } = require("nanoid");
 const filedDB = require("./filedDB");
 const router = express.Router();
+const path = require("path");
+const config = require("../config");
+const multer = require("multer");
+const { nanoid } = require("nanoid");
 
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, config.uploadPath);
+  },
+
+  filename: (req, file, cb) => {
+    cb(null, nanoid() + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({ storage });
 const errorHadler = (message) => {
-  const properties = ["author", "message"];
+  const properties = [];
   const wrongProperties = [];
   const propertyHandler = (property) => {
     return typeof property === "string" && property !== "";
@@ -16,43 +30,35 @@ const errorHadler = (message) => {
 };
 
 router.get("/", async (req, res) => {
-  const sliceNumber = 30;
   const messages = await filedDB.get();
-  const datetime = req.query.datetime;
-  let answer;
-  let status = 200;
-  if (datetime) {
-    if (isNaN(new Date(datetime))) {
-      answer = { message: "Datetime query is not correct" };
-      status = 400;
-    } else {
-      answer = messages
-        .filter((item) => {
-          return new Date(item.datetime) > new Date(datetime);
-        })
-        .slice(-sliceNumber);
-    }
-  } else {
-    answer = messages.slice(-sliceNumber);
-  }
-  console.log( "\n",new Date(datetime).toString(), "\n", new Date(messages[messages.length - 1].datetime).toString());
-  res.status(status).send(answer);
+  res.send(messages);
 });
 
-router.post("/", async (req, res) => {
-  const errorProps = errorHadler(req.body);
-  if (errorProps.length === 0) {
-    const message = { message: req.body.message, author: req.body.author };
-    const datetime = new Date().toISOString();
-    filedDB.add({ ...message, datetime, id: nanoid() });
-    res.send({ message: "Message recorded.", datetime });
-  } else {
-    res.status(400).send({
-      type: "props error",
-      errorProps: errorProps,
-      message: errorProps.join(" and ") + " prop(s) is(are) uncorrect.",
-    });
-  }
-});
+router.post(
+  "/",
+  (req, res, next) => {
+    console.log(req.files);
+    next();
+  },
+  upload.single("image"),
+  (req, res) => {
+    const errorProps = errorHadler(req.body);
+    if (errorProps.length === 0) {
+      const message = { message: req.body.message, author: req.body.author };
+      if (req.file) {
+        message.image = req.file.name;
+      }
+      const datetime = new Date().toISOString();
+      filedDB.add({ ...message, datetime, id: nanoid() });
+      res.send({ message: "Message recorded.", datetime });
+    } else {
+      res.status(400).send({
+        type: "props error",
+        errorProps: errorProps,
+        message: errorProps.join(" and ") + " prop(s) is(are) uncorrect.",
+      });
+    }
+  },
+);
 
 module.exports = router;
