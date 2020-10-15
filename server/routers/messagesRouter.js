@@ -5,6 +5,7 @@ const path = require("path");
 const config = require("../config");
 const multer = require("multer");
 const { nanoid } = require("nanoid");
+const MessageHandler = require("./messageHandler");
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -17,8 +18,9 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
 const errorHadler = (message) => {
-  const properties = [];
+  const properties = ["message"];
   const wrongProperties = [];
   const propertyHandler = (property) => {
     return typeof property === "string" && property !== "";
@@ -37,25 +39,28 @@ router.get("/", async (req, res) => {
 router.post(
   "/",
   (req, res, next) => {
-    console.log(req.files);
     next();
   },
   upload.single("image"),
   (req, res) => {
-    const errorProps = errorHadler(req.body);
-    if (errorProps.length === 0) {
-      const message = { message: req.body.message, author: req.body.author };
-      if (req.file) {
-        message.image = req.file.name;
-      }
-      const datetime = new Date().toISOString();
-      filedDB.add({ ...message, datetime, id: nanoid() });
-      res.send({ message: "Message recorded.", datetime });
+    const message = new MessageHandler(req, {
+      includeFields: [
+        { name: "author", path: ["body", "author"], defaultValue: "Anonymus" },
+        { name: "message", path: ["body", "message"] },
+        { name: "image", path: ["file", "filename"] },
+        { name: "id", path: [null], defaultValue: nanoid() },
+        { name: "datetime", path: [null], defaultValue: new Date().toISOString() },
+      ],
+      requiredFields: ["message"],
+    });
+    if (message.getErrorProps().length === 0) {
+      filedDB.add(message.getData());
+      res.send({ message: "Message recorded.", datetime: message.getData().datetime });
     } else {
       res.status(400).send({
         type: "props error",
-        errorProps: errorProps,
-        message: errorProps.join(" and ") + " prop(s) is(are) uncorrect.",
+        errorProps: message.getErrorProps(),
+        message: message.getErrorProps().join(" and ") + " prop(s) is(are) uncorrect.",
       });
     }
   },

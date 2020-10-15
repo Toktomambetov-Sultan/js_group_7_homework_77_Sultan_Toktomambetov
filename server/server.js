@@ -10,6 +10,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use(express.static("public"));
 app.use("/messages", messageRouter);
 app.listen(port, () => {
   console.log(`Server stared on ${port} port.`);
